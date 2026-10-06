@@ -215,6 +215,30 @@
       color: var(--text-muted);
       font-size: 0.9rem;
     }
+    .match-count-badge {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-top: 4px;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .match-count-badge.zero {
+      background: #fff1f2;
+      border-color: #fecdd3;
+      color: #be123c;
+    }
+    .shortcut-tip {
+      font-size: 0.8rem;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
   </style>
 </head>
 <body>
@@ -228,7 +252,7 @@
 
     <div class="form-group">
       <label for="location-select" id="label-location">活動地點</label>
-      <select id="location-select">
+      <select id="location-select" onchange="updateMatchCount()">
         <option value="all" id="opt-loc-all">不限 (全部)</option>
         <option value="indoor" id="opt-loc-indoor">室內</option>
         <option value="outdoor" id="opt-loc-outdoor">室外</option>
@@ -237,7 +261,7 @@
 
     <div class="form-group">
       <label for="minutes-select" id="label-minutes">可用時間（不得超過）</label>
-      <select id="minutes-select">
+      <select id="minutes-select" onchange="updateMatchCount()">
         <option value="15" id="opt-min-15">15 分鐘</option>
         <option value="30" id="opt-min-30" selected>30 分鐘</option>
         <option value="60" id="opt-min-60">60 分鐘</option>
@@ -246,11 +270,16 @@
 
     <div class="form-group">
       <label for="energy-select" id="label-energy">活動強度</label>
-      <select id="energy-select">
+      <select id="energy-select" onchange="updateMatchCount()">
         <option value="all" id="opt-energy-all">不限 (全部)</option>
         <option value="low" id="opt-energy-low">低強度</option>
         <option value="medium" id="opt-energy-medium">中強度</option>
       </select>
+    </div>
+
+    <div class="match-count-badge" id="match-count-badge">
+      <span id="match-count-text">目前符合條件：12 項活動</span>
+      <span class="shortcut-tip" id="shortcut-tip">(快捷鍵: Enter 抽取 / Esc 重設)</span>
     </div>
 
     <div class="button-group">
@@ -320,7 +349,9 @@
         labelTime: "所需時間：",
         labelLoc: "地點：",
         labelEnergy: "強度：",
-        minUnit: "分鐘"
+        minUnit: "分鐘",
+        matchCount: (n) => `目前符合條件：${n} 項活動`,
+        shortcutTip: "(快捷鍵: Enter 抽取 / Esc 重設)"
       },
       en: {
         disclaimer: "Fictional simulation, not an official announcement",
@@ -348,9 +379,39 @@
         labelTime: "Time: ",
         labelLoc: "Location: ",
         labelEnergy: "Energy: ",
-        minUnit: "mins"
+        minUnit: "mins",
+        matchCount: (n) => `Matching activities: ${n}`,
+        shortcutTip: "(Shortcut: Enter to pick / Esc to reset)"
       }
     };
+
+    function getFilteredActivities() {
+      const loc = document.getElementById('location-select').value;
+      const min = parseInt(document.getElementById('minutes-select').value, 10);
+      const energy = document.getElementById('energy-select').value;
+
+      return activities.filter(act => {
+        const matchLoc = (loc === 'all' || act.location_type === loc);
+        const matchMin = (act.minutes <= min);
+        const matchEnergy = (energy === 'all' || act.energy === energy);
+        return matchLoc && matchMin && matchEnergy;
+      });
+    }
+
+    function updateMatchCount() {
+      const filtered = getFilteredActivities();
+      const t = i18n[currentLang];
+      const badge = document.getElementById('match-count-badge');
+      const countText = document.getElementById('match-count-text');
+      if (badge && countText) {
+        countText.textContent = t.matchCount(filtered.length);
+        if (filtered.length === 0) {
+          badge.classList.add('zero');
+        } else {
+          badge.classList.remove('zero');
+        }
+      }
+    }
 
     function updateLanguageUI() {
       const t = i18n[currentLang];
@@ -377,7 +438,9 @@
       document.getElementById('btn-reset').textContent = t.resetBtn;
       document.getElementById('history-title').textContent = t.historyTitle;
       document.getElementById('btn-clear-history').textContent = t.clearHistory;
+      document.getElementById('shortcut-tip').textContent = t.shortcutTip;
 
+      updateMatchCount();
       renderCurrentResult();
       renderHistory();
     }
@@ -420,16 +483,7 @@
     }
 
     function pickActivity() {
-      const loc = document.getElementById('location-select').value;
-      const min = parseInt(document.getElementById('minutes-select').value, 10);
-      const energy = document.getElementById('energy-select').value;
-
-      const filtered = activities.filter(act => {
-        const matchLoc = (loc === 'all' || act.location_type === loc);
-        const matchMin = (act.minutes <= min);
-        const matchEnergy = (energy === 'all' || act.energy === energy);
-        return matchLoc && matchMin && matchEnergy;
-      });
+      const filtered = getFilteredActivities();
 
       if (filtered.length === 0) {
         currentPicked = 'none';
@@ -452,6 +506,7 @@
       document.getElementById('location-select').value = 'all';
       document.getElementById('minutes-select').value = '30';
       document.getElementById('energy-select').value = 'all';
+      updateMatchCount();
     }
 
     function clearHistory() {
@@ -478,6 +533,26 @@
         `;
       }).join('');
     }
+
+    // Keyboard shortcut listener
+    window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'SELECT') {
+        if (e.key === 'Escape') {
+          e.target.blur();
+          resetFilters();
+        }
+        return;
+      }
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        pickActivity();
+      } else if (e.key === 'Escape') {
+        resetFilters();
+      }
+    });
+
+    // Initialize count
+    updateMatchCount();
   </script>
 </body>
 </html>
